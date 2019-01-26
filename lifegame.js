@@ -31,6 +31,7 @@ function readFile(filename, callback){//filename파일을 XMLHttpRequest 객체�
     req.send(null);
 }
 
+
 //생명 게임 시뮬레이터를 생성하는 함수를 정의
 function createLifeGame(parent, nx, ny, width, height){
     //타이틀
@@ -48,6 +49,7 @@ function createLifeGame(parent, nx, ny, width, height){
     parent.appendChild(elt("div",null,title,toolbar,viewpanel));
 }
 
+
 //state객체의 정의
 state.create = function(nx,ny){
     //격자의 크기
@@ -55,6 +57,96 @@ state.create = function(nx,ny){
     state.ny=ny;
     //셀의 상태를 저장하는 2차원 배열을 생성하고 초기화한다.
     state.cells = new Array(ny);
-    
+    for(var ix=0;ix<nx; ix++){
+        state.cells[ix] = new Array(ny);
+        for(var iy=0;iy<ny;iy++){
+            state.cells[ix][iy]=0;
+        }
+    }
+
+    //click이벤트 리스너 등록 : view가 발행한 이벤트에 반응하여 셀의 상태를 바꾼다.
+    document.addEventListener("clickview",function(event){
+        state.setLife(event.detail.ix, event.detail.iy, event.detail.life);
+    }, false);
+
+    //changeCell 이벤트 객체와 changeGeneration 이벤트 객체를 생성한다.
+    state.changeCellEvent = document.createEvent("HTMLEvents");
+    state.changeGenerationEvent = document.createEvent("HTMLEvents");
+
+    //generation를 추가하고 0으로 설정한다
+    state.generation = 0;
+    state.tellGenerationChange(0);
+
+    //애니메이션의 상태를 저장하는 변수
+    state.playing = false; //애니메이션이 실행 중인지를 뜻하는 논리값
+    state.timer = null; //애니메이션의 타이머
+}
+
+state.tellCellChange = function(ix, iy, life){
+    state.changeCellEvent.initEvent("changecell",false,false);
+    state.changeCellEvent.detail = {ix:ix,iy:iy,life:life};
+    document.dispatchEvent(state.changeCellEvent)
+}
+
+//세대가 바뀔 때 호출되는 메서드 tellGenerationChange 안에서 changegeneration이라는 커스텀 이벤트를 발행합니다.
+//view 객체는 이 changegeneration 이벤트에 반응하여 세대 표시를 갱신합니다.
+state.tellGenerationChange = function(generation){
+    state.chagneGenerationEvent.initEvent("changegeneration",false,false);
+    state.changeGenerationEvent.detail = {genertaion : generation};
+    document.dispatchEvent(state.changeGenerationEvent);
+}
+
+//셀(ix,iy)주변 생물의 마릿수를 구합니다. 격자의 윗부분과 아랫부분, 왼쪽 부분과 오른쪽 부분이 연결되는 조건인 주기적인 경계 조건에 따라 계산합니다.(뭔소리여..)
+state.getSumAround = function(ix,iy){
+    var dx = [0, 1, 1, 1, 0,-1,-1,-1];
+    var dy = [1, 1, 0,-1,-1,-1, 0, 1];
+    //주기적 경계 조건(.......;;)
+    for(var k=0,sum=0;k<dx.length;k++){
+        if(state.cells[(ix+dx[k]+state.nx)%state.nx][(iy+dy[k]+state.ny)%state.ny]){
+            sum++
+        }
+    }
+}
+
+//세대 변화에 따라 생물의 상태를 바꾸는 메서드를 정의
+state.update = function(){
+    //상태를 바꾸지 않고 전체 셀을 검사한다. 그리고 변경할 셀을 changedCell 배열에 담는다
+    var changedCell = [];
+    for(var ix=0; ix<state.nx; ix++){
+        for(var iy=0; iy<state.ny; iy++){
+            var sum = state.getSumAround(ix,iy);
+            if(sum<1 || sume >=4){//주위의 마릿수가 한마리 이하거나 네마리 이상이면 죽는다
+                if(state.cells[ix][iy]){
+                    changedCell.push({x:ix,y:iy});
+                    //셀의 변경을 요청한다
+                    state.tellCellChange(ix,iy,0);
+                }
+            }else if(sum==3){//주위의 마리수가 세마리면 생성한다
+                if(!state.cells[ix][iy]){
+                    changedCell.push({x:ix,y:iy});
+                    //셀의 상태 변경을 요청한다
+                    state.tellCellChange(ix,iy,1);
+                }   
+            }
+        }
+    }
+    //전체 셀의 상태를 확인하고 셀의 상태를 변경한다 (배타적 논리합의 결과 0->1, 1->0 이 된다)
+    for(var i=0;i<changedCell.length;i++){
+        state.cells[changedCell[i].x][changedCell[i].y]^=1;
+    }
+    //다음 세대로 교체하고 세대 표시의 변경을 요청한다
+    state.tellGenerationChange(state.generation++);
+};
+
+//그 다음에는 셀의 상태를 설정하는 메서드를 정의합니다. setLife 메서드는 셀(ix,iy) 값에 생물의 생사 여부를 기록합니다. 0이면 죽이고 1이면 탄생, 2면 생사를 반전시킵니다
+state.setLife = function(ix,iy,life){
+    if(life==2){//생물의 삶과 죽음을 반대로 설정한다 (0->1, 1->0)
+        state.cells[ix][iy]^=1;//배타적 논리합. 좌변 값은 0 또는 1인데(죽어있거나 살아있거나) 0이라면 0^1 은 1이기 때문에 죽어있던 것을 살리고, 1이라면 1^1 은 0이기 때문에 살아있던걸 죽일 수 있다. 해당 연산자를 매우 적절하게 활용한 예라는 생각이 든다
+        state.tellCellChange(ix,iy,state.cells[ix][iy]); //셀의 상태 변경을 요청한다.
+    }else{//지정한 life 값으로 덮어쓴다
+        if(state.cells[ix][iy]!=life){
+            state.cells[ix][iy]=life;
+            state.tellCellChange(ix,iy,life);
+        }
     }
 }
