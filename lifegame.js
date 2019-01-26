@@ -192,8 +192,34 @@ window.onload = function(){
         view.drawLattice();
         //세대를 표시하는 element를 생성한다
         view.genertaion = elt("span",{id: "generation"});
-        view.statuspanel = elt();
-    }
+        view.statuspanel = elt("div",{class:"status"},"세대 :",view.generation);
+
+        //clickview 이벤트를 발생시킬 때 사용할 이벤트 객체를 생성한다.
+        view.clickview = document.createEvent("HTMLEvents");
+        //layer[1]을 클릭했을 때 동작하는 이벤트 리스너를 등록한다.
+        view.layer[1].addEventListener("click", function(e){
+            var ix = Math.floor(e.offsetX/view.cellWidth);//셀의 x방향 번호. 참고로 math.floor는 버림.
+            var iy = Math.floor(e.offsetY/view.cellHeight);//셀의 y방향 번호
+            //view의 (ix,iy)지점을 클릭했음을 clickview 이벤트로 알린다
+            view.clickEvent.initEvent("clickview",false,false);
+            view.clickEvent.detail = {ix:ix, iy:iy, life:2};
+            document.dispatchEvent(view.clickEvent);
+        },false);
+
+        //changeCell 이벤트 리스너 등록 : state에서 받은 이벤트로 셀을 다시 그린다
+        document.addEventListener("changecell",function(e){
+            view.drawCell(e.detail.ix, e.detail.iy, e.detail.life);
+        },false);
+        //changeGeneration 이벤트 리스너 등록 : state에서 받은 이벤트로 세대 표시를 갱신한다
+        document.addEventListener("changegeneration",function(e){
+            view.showGeneration(e.detail.generation);
+        },false);
+
+        //viewpanel 요소의 객체를 반환한다.
+        return elt(
+            "div", {class:"viewpanel"}, view.layer[0], view.layer[1], view.statuspanel
+        );
+    };
 
 
 
